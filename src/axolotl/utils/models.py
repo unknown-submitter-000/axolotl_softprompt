@@ -8,7 +8,7 @@ import bitsandbytes as bnb
 import torch
 import transformers
 from optimum.bettertransformer import BetterTransformer
-from peft import PeftConfig, prepare_model_for_kbit_training
+from peft import PeftConfig, TaskType, prepare_model_for_kbit_training
 from peft.tuners.lora import QuantLinear
 from transformers import (  # noqa: F401
     AddedToken,
@@ -216,7 +216,8 @@ def load_model(
             model_kwargs["quantization_config"] = GPTQConfig(
                 **model_config.quantization_config
             )
-    if cfg.adapter == "qlora" and cfg.load_in_4bit:
+    #if cfg.adapter == "qlora" and cfg.load_in_4bit:
+    if cfg.load_in_4bit:
         model_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             llm_int8_threshold=6.0,
@@ -266,32 +267,7 @@ def load_model(
                 if cfg.flash_attn_fuse_qkv:
                     LOG.info("patching with fused QKV")
                     replace_llama_qkv_with_fused(model)
-        # elif model_type == "GPTNeoXForCausalLM" and cfg.flash_attention:
-        #     This is a WIP, still an issue with the backward pass
-        #     RuntimeError: grad can be implicitly created only for scalar outputs
-        #     TODO: try config.sequence_parallel = False
-        #     # https://github.com/HazyResearch/flash-attention/blob/40a25c8ee7465cf547b929cfa2937034e37bfce9/tests/models/test_gpt_neox.py#L12
-        #     # https://github.com/HazyResearch/flash-attention/tree/main/training#model-components
-        #     # add `**kwargs` to https://github.com/HazyResearch/flash-attention/blob/40a25c8ee7465cf547b929cfa2937034e37bfce9/flash_attn/models/gpt.py#L442
-        #     from flash_attn.utils.pretrained import state_dict_from_pretrained
-        #     from flash_attn.models.gpt import GPTLMHeadModel
-        #     from flash_attn.models.gpt_neox import remap_state_dict_hf_gpt_neox, gpt_neox_config_to_gpt2_config
-        #     from transformers import GPTNeoXConfig
-        #     config = gpt_neox_config_to_gpt2_config(GPTNeoXConfig.from_pretrained(base_model))
-        #     config.use_flash_attn = True
-        #     config.fused_bias_fc = True
-        #     config.fused_mlp = True  # GPT-NeoX-20B uses "gelu_fast"
-        #     config.activation_function = "gelu_fast"
-        #     config.fused_dropout_add_ln = True
-        #     # config.residual_in_fp32 = True
-        #
-        #     model: GPTLMHeadModel = GPTLMHeadModel.from_pretrained(
-        #         base_model,
-        #         config,
-        #         dtype=torch_dtype,
-        #         device=cfg.device,
-        #     )
-        #     model.train() # sets to train instead of eval mode
+
         elif model_type == "MixFormerSequentialForCausalLM":
             from axolotl.models.phi import MixFormerSequentialForCausalLM
 
@@ -416,8 +392,9 @@ def load_model(
 
     needs_fa2_dtype = cfg.adapter or cfg.fsdp
     if (cfg.adapter == "lora" and load_in_8bit) or (
-        cfg.adapter == "qlora" and cfg.load_in_4bit
-    ):
+        cfg.adapter == "qlora" and cfg.load_in_4bit) or (
+        cfg.adapter == "softprompt" and (cfg.load_in_8bit or cfg.load_in_4bit)
+        ):
         LOG.info("converting PEFT model w/ prepare_model_for_kbit_training")
         if cfg.gradient_checkpointing:
             model.gradient_checkpointing_enable()
@@ -437,8 +414,10 @@ def load_model(
                 if hasattr(module, "weight"):
                     module.to(cfg.torch_dtype)
 
+    # load peft model
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
-
+    LOG.info(model)
+    LOG.info(lora_config)
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")
 
@@ -473,6 +452,8 @@ def load_adapter(model, cfg, adapter, inference=False):
         model.enable_input_require_grads()
     if adapter in ["lora", "qlora"]:
         return load_lora(model, cfg, inference=inference)
+    if adapter in ["softprompt"]:
+        return load_softprompt(model, cfg, inference=inference)
     if adapter == "llama-adapter":
         return load_llama_adapter(model, cfg)
 
@@ -558,3 +539,36 @@ def load_lora(model, cfg, inference=False):
     model.print_trainable_parameters()
 
     return model, lora_config
+
+
+def load_softprompt(model, cfg, inference=False):
+    # type: (PreTrainedModel, DictDefault, bool) -> Tuple[PreTrainedModel, Optional[PeftConfig]]
+
+    from peft import LoraConfig, PeftModel, get_peft_model
+    from softprompt.tuner import GraphPeftType, GraphPromptTuningConfig
+    from softprompt.mapping import get_peft_graph_model
+
+    # build our graph prompt tuning model
+    peft_config = GraphPromptTuningConfig(
+        task_type=TaskType.CAUSAL_LM,
+        input_embedding_dim=cfg.softprompt_input_embedding_dim,
+        num_virtual_tokens=cfg.softprompt_num_virtual_tokens,
+        encoder_hidden_size=cfg.softprompt_encoder_hidden_size,
+        embed_projection=True   
+    )
+
+    LOG.info(f"SoftPrompt config: {repr(peft_config)}")
+
+    model = get_peft_graph_model(model, peft_config)
+
+    if cfg.softprompt_model_dir:
+        LOG.debug("Loading pretained PEFT - SoftPrompt")
+        model.load_adapter(
+            cfg.softprompt_model_dir, 
+            adapter_name='default',
+            is_trainable=(not inference),
+            )
+
+    model.print_trainable_parameters()
+
+    return model, peft_config

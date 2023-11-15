@@ -77,11 +77,9 @@ def train(
                 f"Using Auto-resume functionality to start with checkpoint at {cfg.resume_from_checkpoint}"
             )
     resume_from_checkpoint = cfg.resume_from_checkpoint
-
     trainer = setup_trainer(
         cfg, train_dataset, eval_dataset, model, tokenizer, total_num_steps
     )
-
     model.config.use_cache = False
 
     # go ahead and presave, so we have the adapter config available to inspect

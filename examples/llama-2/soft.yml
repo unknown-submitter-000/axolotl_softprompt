@@ -1,0 +1,70 @@
+base_model: /home/ec2-user/proj/llm_models/vicuna-13b-v1.5-16k
+base_model_config: /home/ec2-user/proj/llm_models/vicuna-13b-v1.5-16k
+model_type: LlamaForCausalLM
+tokenizer_type: LlamaTokenizer
+is_llama_derived_model: true
+
+load_in_8bit: false
+load_in_4bit: true
+strict: false
+
+datasets:
+  - path: /home/ec2-user/proj/code/llm_long_context/rec_retrieval_ft_data/m2_2000samples_50randoms/potential_20_sample_5.jsonl
+    has_soft: true
+    pos_path: /home/ec2-user/proj/code/llm_long_context/rec_retrieval_ft_data/m2_2000samples_50randoms/potential_20_sample_5.pt
+    type: alpaca
+dataset_prepared_path:
+val_set_size: 0.05
+output_dir: ./potential_20_sample_5/qlora-out-vicuna-13b-v1.5-16k
+
+adapter: softprompt
+adapter_model_dir:
+
+sequence_len: 16384
+sample_packing: false
+pad_to_sequence_len: true
+
+softprompt_input_embedding_dim: 1
+softprompt_num_virtual_tokens: 1
+softprompt_encoder_hidden_size: 1024
+
+wandb_project:
+wandb_entity:
+wandb_watch:
+wandb_run_id:
+wandb_log_model:
+
+gradient_accumulation_steps: 1
+micro_batch_size: 1
+num_epochs: 5
+optimizer: paged_adamw_32bit
+lr_scheduler: cosine
+learning_rate: 0.0002
+
+train_on_inputs: false
+group_by_length: false
+bf16: true
+fp16: false
+tf32: false
+
+gradient_checkpointing: true
+early_stopping_patience:
+resume_from_checkpoint:
+local_rank:
+logging_steps: 1
+xformers_attention:
+flash_attention: true
+
+warmup_steps: 10
+eval_steps: 0.05
+eval_table_size:
+save_steps:
+debug:
+deepspeed:
+weight_decay: 0.0
+fsdp:
+fsdp_config:
+special_tokens:
+  bos_token: "<s>"
+  eos_token: "</s>"
+  unk_token: "<unk>"

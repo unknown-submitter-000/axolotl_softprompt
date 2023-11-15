@@ -37,7 +37,7 @@ install_requires, dependency_links = parse_requirements()
 
 setup(
     name="axolotl",
-    version="0.3.0",
+    version="0.3.0-dev",
     description="LLM Trainer",
     long_description="Axolotl is a tool designed to streamline the fine-tuning of various AI models, offering support for multiple configurations and architectures.",
     package_dir={"": "src"},

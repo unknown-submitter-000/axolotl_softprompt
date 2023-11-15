@@ -5,6 +5,11 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
+import json
+import os 
+from tqdm import tqdm
+from xopen import xopen
+
 import torch
 from datasets import (
     Dataset,
@@ -59,6 +64,7 @@ def prepare_dataset(cfg, tokenizer):
     prompters = []
     if not cfg.pretraining_dataset:
         with zero_first(is_main_process()):
+            LOG.info("Dataset preprocess use this branch.")
             train_dataset, eval_dataset, prompters = load_prepare_datasets(
                 tokenizer, cfg, DEFAULT_DATASET_PREPARED_PATH
             )
@@ -164,6 +170,7 @@ def load_tokenized_prepared_datasets(
             except (FileNotFoundError, ConnectionError):
                 pass
 
+
             # prefer local dataset, even if hub exists
             local_path = Path(config_dataset.path)
             if local_path.exists():
@@ -188,12 +195,36 @@ def load_tokenized_prepared_datasets(
                         ds_type = "csv"
                     elif ".txt" in config_dataset.path:
                         ds_type = "text"
-                    ds = load_dataset(
+                    '''ds = load_dataset(
                         ds_type,
                         name=config_dataset.name,
                         data_files=config_dataset.path,
                         streaming=False,
                         split=None,
+                    )'''
+                    all_input_examples = []
+                    # Fetch all of the prompts
+                    with xopen(config_dataset.path) as fin:
+                        for i,line in (enumerate(fin)):
+                            input_example = json.loads(line)
+                            all_input_examples.append(input_example)
+                    if config_dataset.has_soft:
+                        LOG.info("Load soft positional tokens")
+                        pos_token_tensor = torch.load(config_dataset.pos_path)
+                    else:
+                        raise ValueError(
+                            "No positional tokens are provided."
+                        )
+                    def data_generator(pos_token_tensor, all_input_examples):
+                        for tensor, example in zip(pos_token_tensor, all_input_examples):
+                            yield {
+                                'prompt_tokens': tensor.numpy(), 
+                                'instruction': example['instruction'], 
+                                'output': example['output']
+                                }
+
+                    ds = Dataset.from_generator(
+                        generator=lambda: data_generator(pos_token_tensor, all_input_examples) 
                     )
                 else:
                     raise ValueError(
@@ -266,7 +297,6 @@ def load_tokenized_prepared_datasets(
                 raise ValueError(
                     f"no train split found for dataset {config_dataset.path}, you may specify a split with 'train_on_split: `"
                 )
-
             dataset_wrapper, dataset_prompter = get_dataset_wrapper(
                 config_dataset=config_dataset,
                 dataset=ds,

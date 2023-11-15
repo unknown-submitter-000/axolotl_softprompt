@@ -4,6 +4,8 @@ import abc
 import copy
 import logging
 from typing import Dict, List, Tuple, Union
+import torch
+from torch import Tensor
 
 from fastchat.conversation import Conversation
 from transformers import BatchEncoding, PreTrainedTokenizer
@@ -107,6 +109,7 @@ class InstructionPromptTokenizingStrategy(PromptTokenizingStrategy):
         (
             instruction,
             input,  # pylint: disable=redefined-builtin
+            prompt_tokens,
             response,
         ) = self.parse_instruction_fields(prompt)
         user_prompt = next(
@@ -128,6 +131,7 @@ class InstructionPromptTokenizingStrategy(PromptTokenizingStrategy):
         tokenized_prompt["input_ids"] += tokenized_res_prompt["input_ids"]
         tokenized_prompt["attention_mask"] += tokenized_res_prompt["attention_mask"]
         tokenized_prompt["labels"] += tokenized_res_prompt["input_ids"]
+        tokenized_prompt["prompt_tokens"] = torch.tensor(prompt_tokens)
 
         return tokenized_prompt
 
@@ -150,10 +154,11 @@ class AlpacaPromptTokenizingStrategy(InstructionPromptTokenizingStrategy):
     Tokenizing strategy for Alpaca prompts.
     """
 
-    def parse_instruction_fields(self, prompt) -> Tuple[str, str, str]:
+    def parse_instruction_fields(self, prompt) -> Tuple[str, str, Tensor, str]:
         return (
             prompt["instruction"],
             prompt["input"] if "input" in prompt else "",
+            prompt["prompt_tokens"],
             prompt["output"],
         )
 
