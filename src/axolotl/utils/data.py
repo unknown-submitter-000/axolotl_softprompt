@@ -68,6 +68,7 @@ def prepare_dataset(cfg, tokenizer):
             train_dataset, eval_dataset, prompters = load_prepare_datasets(
                 tokenizer, cfg, DEFAULT_DATASET_PREPARED_PATH
             )
+        LOG.info("dataset prepared")
     else:
         train_dataset = load_pretraining_dataset(
             cfg.pretraining_dataset,
@@ -211,6 +212,7 @@ def load_tokenized_prepared_datasets(
                     if config_dataset.has_soft:
                         LOG.info("Load soft positional tokens")
                         pos_token_tensor = torch.load(config_dataset.pos_path)
+                        LOG.info("Load soft positional tokens is done")
                     else:
                         raise ValueError(
                             "No positional tokens are provided."
@@ -222,10 +224,12 @@ def load_tokenized_prepared_datasets(
                                 'instruction': example['instruction'], 
                                 'output': example['output']
                                 }
-
+                    LOG.info("Start generate dataset")
+                    list_of_tensors = pos_token_tensor.unbind(dim=0)
                     ds = Dataset.from_generator(
                         generator=lambda: data_generator(pos_token_tensor, all_input_examples) 
                     )
+                    LOG.info("Generation of dataset is done")
                 else:
                     raise ValueError(
                         "unhandled dataset load: local path exists, but is neither a directory or a file"
