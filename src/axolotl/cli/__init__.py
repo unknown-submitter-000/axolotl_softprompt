@@ -126,19 +126,19 @@ def do_inference(
             prompt = instruction.strip()
         batch = tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
 
-        print("=" * 40)
+        LOG.info("=" * 40)
         model.eval()
         with torch.no_grad():
             generation_config = GenerationConfig(
                 repetition_penalty=1.1,
-                max_new_tokens=1024,
-                temperature=0.9,
-                top_p=0.95,
-                top_k=40,
+                max_new_tokens=512,
+                #temperature=0.9,
+                #top_p=0.95,
+                #top_k=40,
                 bos_token_id=tokenizer.bos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.pad_token_id,
-                do_sample=True,
+                do_sample=False,
                 use_cache=True,
                 return_dict_in_generate=True,
                 output_attentions=False,
@@ -148,11 +148,12 @@ def do_inference(
             streamer = TextStreamer(tokenizer)
             generated = model.generate(
                 inputs=batch["input_ids"].to(cfg.device),
+                prompt_tokens=batch["prompt_tokens"].to(cfg.device),
                 generation_config=generation_config,
                 streamer=streamer,
             )
-        print("=" * 40)
-        print(tokenizer.decode(generated["sequences"].cpu().tolist()[0]))
+        LOG.info("=" * 40)
+        LOG.info(tokenizer.decode(generated["sequences"].cpu().tolist()[0]))
 
 
 def do_inference_gradio(
