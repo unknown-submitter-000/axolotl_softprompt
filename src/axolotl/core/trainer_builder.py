@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import Optional, Union
+from packaging import version
 
 import torch
 import transformers
@@ -20,6 +21,9 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import BatchSampler, DataLoader, RandomSampler, SequentialSampler
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 from transformers.trainer_utils import seed_worker
+from transformers.utils import is_datasets_available
+
+import inspect
 
 from axolotl.monkeypatch.relora import ReLoRACallback, ReLoRAScheduler
 from axolotl.utils.callbacks import (
@@ -39,6 +43,8 @@ try:
     import torch._dynamo  # pylint: disable=ungrouped-imports
 except ImportError:
     pass
+if is_datasets_available():
+    import datasets
 
 LOG = logging.getLogger("axolotl.core.trainer_builder")
 
@@ -120,6 +126,15 @@ class AxolotlTrainer(Trainer):
         self.bench_data_collator = bench_data_collator
         super().__init__(*args, **kwargs)
 
+    def _set_signature_columns_if_needed(self):
+        if self._signature_columns is None:
+            # Inspect model forward signature to keep only the arguments it accepts.
+            signature = inspect.signature(self.model.forward)
+            self._signature_columns = list(signature.parameters.keys())
+            # Labels may be named label or label_ids, the default data collator handles that.
+            self._signature_columns += list(set(["label", "label_ids", "prompt_tokens"] + self.label_names)) # added for support soft prompt tuning
+
+        
     def create_scheduler(
         self, num_training_steps: int, optimizer: torch.optim.Optimizer = None
     ):
@@ -213,7 +228,31 @@ class AxolotlTrainer(Trainer):
             return self.accelerator.prepare_data_loader(
                 DataLoader(train_dataset, **dataloader_params)
             )
-        return super().get_train_dataloader()
+        #return super().get_train_dataloader()
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            "batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+            "persistent_workers": self.args.dataloader_persistent_workers,
+        }
+        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_train_sampler()
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["worker_init_fn"] = seed_worker
+        train_loader = DataLoader(train_dataset, **dataloader_params)
+
+        return self.accelerator.prepare(train_loader)
 
     def get_eval_dataloader(
         self, eval_dataset: Optional[Dataset] = None
@@ -284,6 +323,7 @@ class AxolotlTrainer(Trainer):
         #     outputs = model(**inputs)
         #     loss = trainer_weighted_loss(outputs, labels, shift_labels=True)
         #     return (loss, outputs) if return_outputs else loss
+        #print(f"{inputs.keys()=}")
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
 
@@ -688,9 +728,10 @@ class HFCausalTrainerBuilder(TrainerBuilderBase):
             "padding": True,  # True/"longest" is the default
         }
         if self.cfg.pad_to_sequence_len:
-            data_collator_kwargs["pad_to_multiple_of"] = 64 * math.ceil(
-                self.cfg.sequence_len / 64
-            )
+            #data_collator_kwargs["pad_to_multiple_of"] = 64 * math.ceil(
+            #    self.cfg.sequence_len / 64
+            #)
+            data_collator_kwargs['max_length'] = self.cfg.sequence_len # add support for soft prompt mini batch
         else:
             # A100 is best at 64, while others at 8. Let's use the larger so we don't have to check
             # https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html
@@ -706,7 +747,6 @@ class HFCausalTrainerBuilder(TrainerBuilderBase):
             set_model_mem_id(self.model, self.tokenizer)
 
             LOG.info("Adding landmark attention tokens to dataset")
-
             for dataset in [self.train_dataset, self.eval_dataset]:
                 dataset = dataset.map(
                     partial(
@@ -720,6 +760,12 @@ class HFCausalTrainerBuilder(TrainerBuilderBase):
         trainer_kwargs, trainer_cls = self.hook_pre_create_trainer(
             trainer_kwargs, trainer_cls
         )
+        item = self.train_dataset[0]
+        #import numpy as np
+        #for key in item:
+        #    print("===========")
+        #    print(f"{key}, {np.shape(item[key])}")
+        #print("===========")
         trainer = trainer_cls(
             model=self.model,
             train_dataset=self.train_dataset,

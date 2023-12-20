@@ -1,5 +1,5 @@
-base_model: /home/ec2-user/proj/llm_models/vicuna-13b-v1.5-16k
-base_model_config: /home/ec2-user/proj/llm_models/vicuna-13b-v1.5-16k
+base_model: /home/ubuntu/llm_models/vicuna-7b-v1.5
+base_model_config: /home/ubuntu/llm_models/vicuna-7b-v1.5
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
@@ -9,23 +9,24 @@ load_in_4bit: true
 strict: false
 
 datasets:
-  - path: /home/ec2-user/proj/code/llm_long_context/rec_retrieval_ft_data/m2_2000samples_50randoms/potential_20_sample_5.jsonl
+  - path: /home/ubuntu/proj/graphbert/data/pubmed/train.jsonl
     has_soft: true
-    pos_path: /home/ec2-user/proj/code/llm_long_context/rec_retrieval_ft_data/m2_2000samples_50randoms/potential_20_sample_5.pt
+    pos_path: /home/ubuntu/proj/graphbert/data/pubmed/train.pt
     type: alpaca
 dataset_prepared_path:
 val_set_size: 0.05
-output_dir: ./potential_20_sample_5/qlora-out-vicuna-13b-v1.5-16k
+output_dir: ./pubmed/qlora-out-vicuna-7b-v1.5
 
 adapter: softprompt
 adapter_model_dir:
 
-sequence_len: 16384
+sequence_len: 256
 sample_packing: false
 pad_to_sequence_len: true
 
-softprompt_input_embedding_dim: 1
-softprompt_num_virtual_tokens: 1
+softprompt_input_embedding_dim: 768
+softprompt_num_pos_tokens: 1
+softprompt_num_virtual_tokens: 4
 softprompt_encoder_hidden_size: 1024
 
 wandb_project:
@@ -34,8 +35,8 @@ wandb_watch:
 wandb_run_id:
 wandb_log_model:
 
-gradient_accumulation_steps: 1
-micro_batch_size: 1
+gradient_accumulation_steps: 2
+micro_batch_size: 8
 num_epochs: 5
 optimizer: paged_adamw_32bit
 lr_scheduler: cosine
@@ -58,7 +59,7 @@ flash_attention: true
 warmup_steps: 10
 eval_steps: 0.05
 eval_table_size:
-save_steps:
+save_steps: 2000
 debug:
 deepspeed:
 weight_decay: 0.0

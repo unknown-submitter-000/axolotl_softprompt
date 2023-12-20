@@ -57,55 +57,65 @@ class DataCollatorForSeq2Seq:
         labels = None
         if return_tensors is None:
             return_tensors = self.return_tensors
+        #print(f"{len(features)=}")
+        if isinstance(features, list):
+            features = features[0]
+        
+        #for key in features:
+        #    for item in features[key]:
+        #        print(f"before padding, {key}, {item.shape=}")
 
         for feature_name, pad_token_id in [
             ("labels", self.label_pad_token_id),
-            ("position_ids", self.position_pad_token_id),
+            #("position_ids", self.position_pad_token_id),
+            ("attention_mask", 0),
+            ("input_ids", self.tokenizer.pad_token_id),
         ]:
-            feat = (
-                [feature[feature_name] for feature in features]
-                if feature_name in features[0].keys()
-                else None
-            )
-            labels = feat if feat and feature_name == "labels" else labels
-            # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
-            # same length to return tensors.
-            if feat is not None:
-                max_feature_length = max(len(l) for l in feat)  # noqa: E741
-                if self.pad_to_multiple_of is not None:
-                    max_feature_length = (
-                        (max_feature_length + self.pad_to_multiple_of - 1)
-                        // self.pad_to_multiple_of
-                        * self.pad_to_multiple_of
-                    )
+            #print(f"{feature_name=}, {features.keys()=}")
+            max_feature_length = self.max_length #max(len(l) for l in feat)  # noqa: E741
+            #if self.pad_to_multiple_of is not None:
+            #    max_feature_length = (
+            #        (max_feature_length + self.pad_to_multiple_of - 1)
+            #        // self.pad_to_multiple_of
+            #        * self.pad_to_multiple_of
+            #    )
 
-                padding_side = self.tokenizer.padding_side
-                for feature in features:
+            padding_side = self.tokenizer.padding_side
+            if feature_name in features:
+                for i in range(len(features[feature_name])):
+                    item = features[feature_name][i]
                     remainder = [pad_token_id] * (
-                        max_feature_length - len(feature[feature_name])
+                        max_feature_length - len(item) #len(feature[feature_name])
                     )
-                    if isinstance(feature[feature_name], list):
-                        feature[feature_name] = (
-                            feature[feature_name] + remainder
+                    if isinstance(item, list):
+                        item = (
+                            item + remainder #feature[feature_name] + remainder
                             if padding_side == "right"
-                            else remainder + feature[feature_name]
+                            else remainder + item #feature[feature_name]
                         )
                     elif padding_side == "right":
-                        feature[feature_name] = np.concatenate(
-                            [feature[feature_name], remainder]
+                        item = np.concatenate(
+                            #[feature[feature_name], remainder]
+                            [item, remainder]
                         ).astype(np.int64)
                     else:
-                        feature[feature_name] = np.concatenate(
-                            [remainder, feature[feature_name]]
+                        item = np.concatenate(
+                            #[remainder, feature[feature_name]]
+                            [remainder, item]
                         ).astype(np.int64)
-
+                    features[feature_name][i] = item
+                features[feature_name] = np.stack(features[feature_name])
+        
         features = self.tokenizer.pad(
             features,
             padding=self.padding,
             max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
+            #pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=return_tensors,
         )
+
+        #for key in features:
+        #    print(f"after padding, {key}, {features[key].shape=}, {type(features[key])}")
 
         # prepare decoder_input_ids
         if (
@@ -138,11 +148,16 @@ class BatchSamplerDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
                     for item in features
                     if feature in item
                 ]
-                chunked_data[feature] = np.concatenate(arrays)
+                chunked_data[feature] = arrays #np.concatenate(arrays)
+            elif feature == "prompt_tokens":
+                arrays = [
+                    np.array(item[feature]) for item in features if feature in item
+                ]
+                chunked_data[feature] = np.stack(arrays)
             else:
                 arrays = [
                     np.array(item[feature]) for item in features if feature in item
                 ]
-                chunked_data[feature] = np.concatenate(arrays)
+                chunked_data[feature] = arrays #np.concatenate(arrays)
         features = [chunked_data]
         return super().__call__(features, return_tensors=return_tensors)

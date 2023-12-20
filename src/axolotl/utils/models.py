@@ -552,6 +552,7 @@ def load_softprompt(model, cfg, inference=False):
     peft_config = GraphPromptTuningConfig(
         task_type=TaskType.CAUSAL_LM,
         input_embedding_dim=cfg.softprompt_input_embedding_dim,
+        num_pos_tokens=cfg.softprompt_num_pos_tokens,
         num_virtual_tokens=cfg.softprompt_num_virtual_tokens,
         encoder_hidden_size=cfg.softprompt_encoder_hidden_size,
         embed_projection=True   
