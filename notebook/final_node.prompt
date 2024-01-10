@@ -1,0 +1,4 @@
+Here is the description of one node: {node_description}
+
+Belows are descriptions of this node's neighbors:
+{neighbor_text}
