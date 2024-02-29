@@ -1,0 +1,4 @@
+([Descriptions]: {node_description}. 
+[Order-{order} Neighbors in the ordering of low-to-high relevance]: 
+{neighbor_text}
+)

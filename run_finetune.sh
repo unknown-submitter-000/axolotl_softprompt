@@ -1,1 +1,1 @@
-accelerate launch -m axolotl.cli.train examples/llama-2/soft.yml >& pubmed-soft-20231219.out
+accelerate launch -m axolotl.cli.train examples/llama-2/soft.yml >& pubmed-soft-7b-8bit.out
