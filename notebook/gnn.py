@@ -16,14 +16,14 @@ class GCN(torch.nn.Module):
         super(GCN, self).__init__()
 
         self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(in_channels, hidden_channels, cached=True))
+        self.convs.append(GCNConv(in_channels, hidden_channels, cached=False))
         self.bns = torch.nn.ModuleList()
         self.bns.append(torch.nn.BatchNorm1d(hidden_channels))
         for _ in range(num_layers - 2):
             self.convs.append(
-                GCNConv(hidden_channels, hidden_channels, cached=True))
+                GCNConv(hidden_channels, hidden_channels, cached=False))
             self.bns.append(torch.nn.BatchNorm1d(hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, out_channels, cached=True))
+        self.convs.append(GCNConv(hidden_channels, out_channels, cached=False))
 
         self.dropout = dropout
         self.num_layers = num_layers
@@ -34,24 +34,24 @@ class GCN(torch.nn.Module):
         for bn in self.bns:
             bn.reset_parameters()
 
-    def forward(self, x, adj_t):
+    def forward(self, x, edge_index):
         for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x, adj_t)
+            x = conv(x, edge_index)
             x = self.bns[i](x)
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1](x, adj_t)
+        x = self.convs[-1](x, edge_index)
         return x 
     
-    def encode(self, x, adj_t):
+    def encode(self, x, edge_index):
         embeddings_mapping = dict()
         for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x, adj_t)
+            x = conv(x, edge_index)
             x = self.bns[i](x)
             embeddings_mapping[i+1] = x
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1](x, adj_t)
+        x = self.convs[-1](x, edge_index)
         embeddings_mapping[self.num_layers] = x
         return embeddings_mapping
 
@@ -80,24 +80,24 @@ class SAGE(torch.nn.Module):
         for bn in self.bns:
             bn.reset_parameters()
 
-    def forward(self, x, adj_t):
+    def forward(self, x, edge_index):
         for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x, adj_t)
+            x = conv(x, edge_index)
             x = self.bns[i](x)
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1](x, adj_t)
+        x = self.convs[-1](x, edge_index)
         return x 
     
-    def encode(self, x, adj_t):
+    def encode(self, x, edge_index):
         embeddings_mapping = dict()
         for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x, adj_t)
+            x = conv(x, edge_index)
             x = self.bns[i](x)
             embeddings_mapping[i+1] = x
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1](x, adj_t)
+        x = self.convs[-1](x, edge_index)
         embeddings_mapping[self.num_layers] = x
         return embeddings_mapping
 

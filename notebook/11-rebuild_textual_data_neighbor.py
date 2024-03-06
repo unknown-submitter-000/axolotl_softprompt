@@ -33,8 +33,8 @@ def simMatrix(A: torch.tensor, B: torch.tensor) -> torch.tensor:
     # and contains values in the range [-1, 1]
     return cosine_similarity_matrix
 
-DATA_PATH = "/home/ubuntu/proj/data/graph/node_pubmed"
-DATA_NAME = "text_graph_pubmed" # "text_graph_pubmed" #"text_graph_aids" #"text_graph_pubmed" # # 
+DATA_PATH = "/home/ubuntu/proj/data/graph/node_children"
+DATA_NAME = "text_graph_children" # "text_graph_pubmed" #"text_graph_aids" #"text_graph_pubmed" # # 
 
 with open(os.path.join(DATA_PATH, f"{DATA_NAME}.pkl"), 'rb') as f:
     graph = pkl.load(f)
@@ -81,16 +81,16 @@ def bert_embeddings(node_text):
 
 
 # %%
-#from angle_emb import AnglE
+from angle_emb import AnglE
 
-#angle = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
+angle = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').to(device=device)
 
 # %%
 all_inputs = graph.text_nodes
 all_embeddings = []
 for inputs in tqdm(all_inputs):
-    #vec = angle.encode(inputs, to_numpy=True)
-    vec = bert_embeddings(inputs).numpy().reshape(1,-1)
+    vec = angle.encode(inputs, to_numpy=True)
+    #vec = bert_embeddings(inputs).numpy().reshape(1,-1)
     #print(vec)
     all_embeddings.append(copy.deepcopy(vec))
 all_embeddings = np.concatenate(all_embeddings)
@@ -213,15 +213,15 @@ for relevance_type in ['pos']:
         current_level_embedding = dict()
         for i in tqdm(range(graph.num_nodes)):
             current_node_text = all_levels_mapping[order][i]
-            #current_level_embedding[i] = torch.tensor(angle.encode(current_node_text), dtype=torch.float)
-            vec = copy.deepcopy(bert_embeddings(current_node_text).numpy().reshape(1,-1))
-            current_level_embedding[i] = torch.tensor(vec, dtype=torch.float)
+            current_level_embedding[i] = torch.tensor(angle.encode(current_node_text), dtype=torch.float)
+            #vec = copy.deepcopy(bert_embeddings(current_node_text).numpy().reshape(1,-1))
+            #current_level_embedding[i] = torch.tensor(vec, dtype=torch.float)
         all_levels_embedding[order] = torch.stack([current_level_embedding[i] for i in range(graph.num_nodes)])
  
     for order in range(0, k+1):
         if not os.path.exists(os.path.join(DATA_PATH, relevance_type)):
             os.makedirs(os.path.join(DATA_PATH, relevance_type))
-        torch.save(all_levels_embedding[order], os.path.join(DATA_PATH, relevance_type, f"order-{order}-bert.pt"))
+        torch.save(all_levels_embedding[order], os.path.join(DATA_PATH, relevance_type, f"order-{order}-angle.pt"))
 
 
 
